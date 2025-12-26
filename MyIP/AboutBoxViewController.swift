@@ -32,6 +32,9 @@ class AboutBoxViewController: NSViewController {
         // Do view setup here.
         isHelpVisible = false
         forceHelp(force: true)
+        
+        // Hide help button
+        helpButton.isHidden = true
 
 
         let infoDict = Bundle.main.infoDictionary
