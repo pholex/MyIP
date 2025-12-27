@@ -114,7 +114,7 @@ class NetworkMonitor {
     
     // 测试网络连通性的辅助方法
     func testInternetConnectivity(completion: @escaping (Bool) -> Void) {
-        guard let url = URL(string: "https://checkip.amazonaws.com") else {
+        guard let url = URL(string: "https://1.1.1.1/cdn-cgi/trace") else {
             completion(false)
             return
         }

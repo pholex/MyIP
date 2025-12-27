@@ -39,17 +39,28 @@ class Network {
 
     func parseIP(_ message:String) -> String {
         var newIP: String = ""
-        do {
-            let pattern = #"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b"#
-            let regex = try NSRegularExpression(pattern: pattern, options: [])
-            let results = regex.firstMatch(in: message, options: [], range: NSRange(message.startIndex..<message.endIndex, in: message))
-
-            results.map {
-                newIP = String(message[Range($0.range, in: message)!])
+        
+        // 检查是否是 Cloudflare trace 格式 (ip=x.x.x.x)
+        if message.contains("ip=") {
+            let lines = message.components(separatedBy: "\n")
+            if let ipLine = lines.first(where: { $0.hasPrefix("ip=") }),
+               let ip = ipLine.components(separatedBy: "=").last?.trimmingCharacters(in: .whitespaces) {
+                newIP = ip
             }
-        }
-        catch {
-            print("Unable to parse IP address.")
+        } else {
+            // 使用原有的正则表达式解析
+            do {
+                let pattern = #"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b"#
+                let regex = try NSRegularExpression(pattern: pattern, options: [])
+                let results = regex.firstMatch(in: message, options: [], range: NSRange(message.startIndex..<message.endIndex, in: message))
+
+                results.map {
+                    newIP = String(message[Range($0.range, in: message)!])
+                }
+            }
+            catch {
+                print("Unable to parse IP address.")
+            }
         }
     
         return newIP
@@ -119,46 +130,75 @@ class Network {
     
     // 通过 curl --noproxy 获取直连 IP
     func getDirectIP(completion: (() -> Void)? = nil) {
+        let directIPServices = [
+            "http://118.184.169.48/dyndns/getip",  // 首选：3322.org IP地址（纯IP，国内）
+            "http://cip.cc"                        // 备选：当前使用的服务（域名）
+        ]
+        
         DispatchQueue.global().async { [weak self] in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
-            process.arguments = ["-s", "--noproxy", "*", "--max-time", "5", "http://cip.cc"]
-            
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = FileHandle.nullDevice
-            
-            do {
-                try process.run()
-                process.waitUntilExit()
-                
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                if let output = String(data: data, encoding: .utf8) {
-                    // 解析 "IP\t: x.x.x.x"
-                    let lines = output.components(separatedBy: "\n")
-                    if let ipLine = lines.first(where: { $0.hasPrefix("IP") }),
-                       let ip = ipLine.components(separatedBy: ": ").last?.trimmingCharacters(in: .whitespaces) {
-                        DispatchQueue.main.async {
-                            self?.directIP = ip
-                            completion?()
-                        }
-                        return
-                    }
-                }
-            } catch {
-                print("Failed to get direct IP: \(error)")
-            }
+            self?.tryDirectIPService(services: directIPServices, index: 0, completion: completion)
+        }
+    }
+    
+    private func tryDirectIPService(services: [String], index: Int, completion: (() -> Void)?) {
+        guard index < services.count else {
+            print("All direct IP services failed")
             DispatchQueue.main.async {
                 completion?()
             }
+            return
         }
+        
+        let service = services[index]
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+        process.arguments = ["-s", "--noproxy", "*", "--max-time", "5", service]
+        
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        
+        do {
+            try process.run()
+            process.waitUntilExit()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8), !output.isEmpty {
+                var ip: String?
+                
+                if service.contains("118.184.169.48") {
+                    // 3322.org 返回纯IP格式
+                    ip = output.trimmingCharacters(in: .whitespacesAndNewlines)
+                } else {
+                    // cip.cc 返回 "IP\t: x.x.x.x" 格式
+                    let lines = output.components(separatedBy: "\n")
+                    if let ipLine = lines.first(where: { $0.hasPrefix("IP") }),
+                       let extractedIP = ipLine.components(separatedBy: ": ").last?.trimmingCharacters(in: .whitespaces) {
+                        ip = extractedIP
+                    }
+                }
+                
+                if let validIP = ip, !validIP.isEmpty {
+                    DispatchQueue.main.async {
+                        self.directIP = validIP
+                        completion?()
+                    }
+                    return
+                }
+            }
+        } catch {
+            print("Failed to get direct IP from \(service): \(error)")
+        }
+        
+        // 当前服务失败，尝试下一个
+        self.tryDirectIPService(services: services, index: index + 1, completion: completion)
     }
     
     func getPublicIPWait(completion: (() -> Void)? = nil) {
         // 设置获取中状态
         externalIP = "获取中..."
         
-        guard let url = URL(string: "https://checkip.amazonaws.com") else {
+        guard let url = URL(string: "https://1.1.1.1/cdn-cgi/trace") else {
             externalIP = "N/A"
             completion?()
             return
@@ -182,7 +222,7 @@ class Network {
     }
 
     func getPublicIPNoWait() {
-        guard let downloadURL = URL(string: "https://checkip.amazonaws.com") else { return }
+        guard let downloadURL = URL(string: "https://1.1.1.1/cdn-cgi/trace") else { return }
 
         URLSession.shared.dataTask(with: downloadURL) { data, urlResponse, error in
 

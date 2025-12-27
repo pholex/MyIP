@@ -65,6 +65,20 @@ struct IPProvider: TimelineProvider {
     
     // 获取 IP
     private func fetchIPDirectly() async -> (ip: String, country: String, city: String)? {
+        // 首选：ipwho.is 一次获取所有信息
+        if let result = await fetchFromIPWho() {
+            return result
+        }
+        
+        // 备选：1.1.1.1 仅获取IP，不显示位置信息
+        if let ip = await fetchFromCloudflare() {
+            return (ip, "", "")
+        }
+        
+        return nil
+    }
+    
+    private func fetchFromIPWho() async -> (ip: String, country: String, city: String)? {
         guard let url = URL(string: "https://ipwho.is/") else { return nil }
         
         do {
@@ -77,7 +91,27 @@ struct IPProvider: TimelineProvider {
                 return (ip, country, city)
             }
         } catch {
-            print("Widget fetch error: \(error)")
+            print("Widget ipwho.is fetch error: \(error)")
+        }
+        return nil
+    }
+    
+    private func fetchFromCloudflare() async -> String? {
+        guard let url = URL(string: "https://1.1.1.1/cdn-cgi/trace") else { return nil }
+        
+        do {
+            let request = URLRequest(url: url, timeoutInterval: 5)
+            let (data, _) = try await URLSession.shared.data(for: request)
+            if let response = String(data: data, encoding: .utf8) {
+                let lines = response.components(separatedBy: "\n")
+                for line in lines {
+                    if line.hasPrefix("ip=") {
+                        return String(line.dropFirst(3))
+                    }
+                }
+            }
+        } catch {
+            print("Widget cloudflare fetch error: \(error)")
         }
         return nil
     }
