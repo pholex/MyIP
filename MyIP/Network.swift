@@ -40,8 +40,13 @@ class Network {
     func parseIP(_ message:String) -> String {
         var newIP: String = ""
         
+        // 检查是否是 AWS checkip 格式 (纯IP)
+        let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        if isValidIP(trimmedMessage) {
+            newIP = trimmedMessage
+        }
         // 检查是否是 Cloudflare trace 格式 (ip=x.x.x.x)
-        if message.contains("ip=") {
+        else if message.contains("ip=") {
             let lines = message.components(separatedBy: "\n")
             if let ipLine = lines.first(where: { $0.hasPrefix("ip=") }),
                let ip = ipLine.components(separatedBy: "=").last?.trimmingCharacters(in: .whitespaces) {
@@ -64,6 +69,16 @@ class Network {
         }
     
         return newIP
+    }
+    
+    private func isValidIP(_ ip: String) -> Bool {
+        let parts = ip.components(separatedBy: ".")
+        guard parts.count == 4 else { return false }
+        
+        for part in parts {
+            guard let num = Int(part), num >= 0 && num <= 255 else { return false }
+        }
+        return true
     }
     
     func updatePublicIP(_ message:String) {
@@ -198,43 +213,86 @@ class Network {
         // 设置获取中状态
         externalIP = "获取中..."
         
-        guard let url = URL(string: "https://1.1.1.1/cdn-cgi/trace") else {
-            externalIP = "N/A"
-            completion?()
+        let services = [
+            "https://checkip.amazonaws.com",
+            "https://1.1.1.1/cdn-cgi/trace"
+        ]
+        
+        tryExternalIPService(services: services, index: 0, completion: completion)
+    }
+    
+    private func tryExternalIPService(services: [String], index: Int, completion: (() -> Void)?) {
+        guard index < services.count else {
+            print("All external IP services failed")
+            DispatchQueue.main.async {
+                self.externalIP = "N/A"
+                self.priorIP = self.externalIP
+                completion?()
+            }
+            return
+        }
+        
+        guard let url = URL(string: services[index]) else {
+            tryExternalIPService(services: services, index: index + 1, completion: completion)
             return
         }
         
         URLSession.shared.dataTask(with: url) { [weak self] data, _, error in
             guard let self = self else { return }
             
-            DispatchQueue.main.async {
-                if let data = data, error == nil,
-                   let message = String(data: data, encoding: .utf8) {
-                    self.updatePublicIP(message)
-                } else {
-                    print("Unable to get external IP from getPublicIPWait.")
-                    self.externalIP = "N/A"
-                    self.priorIP = self.externalIP
+            if let data = data, error == nil,
+               let message = String(data: data, encoding: .utf8) {
+                let parsedIP = self.parseIP(message)
+                if !parsedIP.isEmpty {
+                    DispatchQueue.main.async {
+                        self.updatePublicIP(message)
+                        completion?()
+                    }
+                    return
                 }
-                completion?()
             }
+            
+            // 当前服务失败，尝试下一个
+            self.tryExternalIPService(services: services, index: index + 1, completion: completion)
         }.resume()
     }
 
     func getPublicIPNoWait() {
-        guard let downloadURL = URL(string: "https://1.1.1.1/cdn-cgi/trace") else { return }
+        let services = [
+            "https://checkip.amazonaws.com",
+            "https://1.1.1.1/cdn-cgi/trace"
+        ]
+        
+        tryExternalIPServiceNoWait(services: services, index: 0)
+    }
+    
+    private func tryExternalIPServiceNoWait(services: [String], index: Int) {
+        guard index < services.count else {
+            print("All external IP services failed")
+            self.externalIP = "N/A"
+            self.priorIP = self.externalIP
+            return
+        }
+        
+        guard let downloadURL = URL(string: services[index]) else {
+            tryExternalIPServiceNoWait(services: services, index: index + 1)
+            return
+        }
 
         URLSession.shared.dataTask(with: downloadURL) { data, urlResponse, error in
-
             guard let data = data, error == nil, urlResponse != nil else {
-                print("Unable to get external IP from getPublicIPNoWait.")
-                self.externalIP = "N/A"
-                self.priorIP = self.externalIP
+                print("Unable to get external IP from service \(index)")
+                self.tryExternalIPServiceNoWait(services: services, index: index + 1)
                 return
             }
 
             let message = String(data: data, encoding: .utf8)!
-            self.updatePublicIP(message)
+            let parsedIP = self.parseIP(message)
+            if !parsedIP.isEmpty {
+                self.updatePublicIP(message)
+            } else {
+                self.tryExternalIPServiceNoWait(services: services, index: index + 1)
+            }
         }.resume()
     }
 

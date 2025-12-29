@@ -65,8 +65,8 @@ struct IPProvider: TimelineProvider {
     
     // 获取 IP
     private func fetchIPDirectly() async -> (ip: String, country: String, city: String)? {
-        // 首选：ipwho.is 一次获取所有信息
-        if let result = await fetchFromIPWho() {
+        // 首选：ip-api.com 一次获取所有信息
+        if let result = await fetchFromIPAPI() {
             return result
         }
         
@@ -78,20 +78,20 @@ struct IPProvider: TimelineProvider {
         return nil
     }
     
-    private func fetchFromIPWho() async -> (ip: String, country: String, city: String)? {
-        guard let url = URL(string: "https://ipwho.is/") else { return nil }
+    private func fetchFromIPAPI() async -> (ip: String, country: String, city: String)? {
+        guard let url = URL(string: "http://ip-api.com/json/") else { return nil }
         
         do {
             let request = URLRequest(url: url, timeoutInterval: 5)
             let (data, _) = try await URLSession.shared.data(for: request)
             if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let ip = json["ip"] as? String,
+               let ip = json["query"] as? String,
                let country = json["country"] as? String,
                let city = json["city"] as? String {
                 return (ip, country, city)
             }
         } catch {
-            print("Widget ipwho.is fetch error: \(error)")
+            print("Widget ip-api.com fetch error: \(error)")
         }
         return nil
     }
