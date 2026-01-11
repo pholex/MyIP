@@ -225,7 +225,11 @@ class Network {
         guard index < services.count else {
             print("All external IP services failed")
             DispatchQueue.main.async {
-                self.externalIP = "N/A"
+                if self.isProxyConnectionIssue() {
+                    self.externalIP = "Proxy Error"
+                } else {
+                    self.externalIP = "N/A"
+                }
                 self.priorIP = self.externalIP
                 completion?()
             }
@@ -269,7 +273,11 @@ class Network {
     private func tryExternalIPServiceNoWait(services: [String], index: Int) {
         guard index < services.count else {
             print("All external IP services failed")
-            self.externalIP = "N/A"
+            if self.isProxyConnectionIssue() {
+                self.externalIP = "Proxy Error"
+            } else {
+                self.externalIP = "N/A"
+            }
             self.priorIP = self.externalIP
             return
         }
@@ -432,5 +440,19 @@ class Network {
 
         freeifaddrs(ifaddr)
         return interfaces
+    }
+    
+    // 检测是否为代理连接问题
+    private func isProxyConnectionIssue() -> Bool {
+        guard let proxies = SCDynamicStoreCopyProxies(nil) as? [String: Any] else {
+            return false
+        }
+        let httpEnabled = proxies["HTTPEnable"] as? Int == 1
+        let httpsEnabled = proxies["HTTPSEnable"] as? Int == 1
+        let socksEnabled = proxies["SOCKSEnable"] as? Int == 1
+        let hasSystemProxy = httpEnabled || httpsEnabled || socksEnabled
+        
+        // 如果系统设置了代理且直连IP不是N/A，说明是代理连接问题
+        return hasSystemProxy && directIP != "N/A"
     }
 }

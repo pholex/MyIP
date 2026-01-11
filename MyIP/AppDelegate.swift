@@ -571,11 +571,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, CLLocationManagerDelegate {
 
     @objc func refresh(_ sender: Any?) {
         if settings.settings.showLocation == true {
-            // 检查上次位置更新是否超过60秒
-            let shouldUpdateLocation = locationManager.location?.timestamp.timeIntervalSinceNow ?? -61 < -60
-            if shouldUpdateLocation {
-                locationManager.startUpdatingLocation()
-            }
+            locationManager.startUpdatingLocation()
         }
         network.getPublicIPWait { [weak self] in
             self?.updateUI()
