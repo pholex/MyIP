@@ -214,8 +214,8 @@ class Network {
         externalIP = "获取中..."
         
         let services = [
-            "https://checkip.amazonaws.com",
-            "https://1.1.1.1/cdn-cgi/trace"
+            "https://checkip.amazonaws.com",     // AWS (主服务)
+            "https://icanhazip.com"              // Cloudflare (备选)
         ]
         
         tryExternalIPService(services: services, index: 0, completion: completion)
@@ -223,15 +223,22 @@ class Network {
     
     private func tryExternalIPService(services: [String], index: Int, completion: (() -> Void)?) {
         guard index < services.count else {
-            print("All external IP services failed")
-            DispatchQueue.main.async {
-                if self.isProxyConnectionIssue() {
-                    self.externalIP = "Proxy Error"
-                } else {
-                    self.externalIP = "N/A"
+            print("All external IP services failed, trying DNS-based fallback...")
+            // 最后尝试使用 OpenDNS 的 DNS 查询（不依赖本机 DNS）
+            getIPViaOpenDNS { [weak self] ip in
+                guard let self = self else { return }
+                DispatchQueue.main.async {
+                    if let ip = ip {
+                        self.externalIP = ip
+                        self.priorIP = ip
+                        print("Got IP via OpenDNS: \(ip)")
+                    } else if self.isProxyConnectionIssue() {
+                        self.externalIP = "Proxy Error"
+                    } else {
+                        self.externalIP = "N/A"
+                    }
+                    completion?()
                 }
-                self.priorIP = self.externalIP
-                completion?()
             }
             return
         }
@@ -263,8 +270,8 @@ class Network {
 
     func getPublicIPNoWait() {
         let services = [
-            "https://checkip.amazonaws.com",
-            "https://1.1.1.1/cdn-cgi/trace"
+            "https://checkip.amazonaws.com",     // AWS (主服务)
+            "https://icanhazip.com"              // Cloudflare (备选)
         ]
         
         tryExternalIPServiceNoWait(services: services, index: 0)
@@ -454,5 +461,34 @@ class Network {
         
         // 如果系统设置了代理且直连IP不是N/A，说明是代理连接问题
         return hasSystemProxy && directIP != "N/A"
+    }
+    
+    // 使用 OpenDNS 查询公网 IP（不依赖本机 DNS 解析）
+    // 直接向 208.67.222.222 (resolver1.opendns.com) 发送 DNS 查询
+    private func getIPViaOpenDNS(completion: @escaping (String?) -> Void) {
+        let task = Process()
+        task.launchPath = "/usr/bin/dig"
+        task.arguments = ["+short", "myip.opendns.com", "@208.67.222.222"]
+        
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = Pipe()
+        
+        do {
+            try task.run()
+            task.waitUntilExit()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !output.isEmpty,
+               output.range(of: #"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"#, options: .regularExpression) != nil {
+                completion(output)
+            } else {
+                completion(nil)
+            }
+        } catch {
+            print("OpenDNS query failed: \(error)")
+            completion(nil)
+        }
     }
 }
