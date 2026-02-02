@@ -29,6 +29,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, CLLocationManagerDelegate {
     var reachability: Reachability?
     var networkMonitor: NetworkMonitor?
     
+    var gatewayCache: [String: String] = [:]  // 缓存网关信息
+    
     var mapImage: NSImage? = nil
     var latitude: CLLocationDegrees? = nil
     var longitude: CLLocationDegrees? = nil
@@ -49,6 +51,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, CLLocationManagerDelegate {
         
         // 初始化网络监听器
         setupNetworkMonitor()
+        
+        // 异步获取网关信息
+        fetchGatewayInfo()
         
         // 检查初始网络状态，如果网络不可用则等待网络恢复
         if networkMonitor?.getCurrentNetworkStatus() == false {
@@ -349,27 +354,46 @@ class AppDelegate: NSObject, NSApplicationDelegate, CLLocationManagerDelegate {
         menu.addItem(nameMenuItem)
         menu.addItem(NSMenuItem.separator())
 
-        // 检测是否使用代理
-        let isUsingProxy = network.directIP != "N/A" && network.directIP != network.externalIP
+        // 检测 IP 差异（代理或 VPN）
+        let hasSystemProxy = IPService.shared.isProxy
+        let ipDifferent = network.directIP != "N/A" && network.directIP != network.externalIP
         
         let externalMenuItem = NSMenuItem(title: "", action: #selector(AppDelegate.doNothing(_:)), keyEquivalent: "")
         externalMenuItem.isEnabled = false
-        if isUsingProxy {
+        if ipDifferent {
             let attrStr = NSMutableAttributedString(string: "External  ")
-            let proxyTextAttrs: [NSAttributedString.Key: Any] = [.foregroundColor: NSColor.controlTextColor]
-            if let shieldImage = NSImage(systemSymbolName: "shield.fill", accessibilityDescription: nil) {
-                let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
-                let coloredImage = shieldImage.withSymbolConfiguration(config)
-                let attachment = NSTextAttachment()
-                attachment.image = coloredImage?.tinted(with: .systemBlue)
-                attrStr.append(NSAttributedString(attachment: attachment))
-                
-                // 添加 4 点间距，与 Widget 的 HStack(spacing: 4) 保持一致
-                let spacingAttrs: [NSAttributedString.Key: Any] = [.kern: 4.0]
-                attrStr.append(NSAttributedString(string: " ", attributes: spacingAttrs))
-                attrStr.append(NSAttributedString(string: "PROXY", attributes: proxyTextAttrs))
+            let labelTextAttrs: [NSAttributedString.Key: Any] = [.foregroundColor: NSColor.controlTextColor]
+            
+            if hasSystemProxy {
+                // 显示代理图标
+                if let shieldImage = NSImage(systemSymbolName: "shield.fill", accessibilityDescription: nil) {
+                    let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
+                    let coloredImage = shieldImage.withSymbolConfiguration(config)
+                    let attachment = NSTextAttachment()
+                    attachment.image = coloredImage?.tinted(with: .systemBlue)
+                    attrStr.append(NSAttributedString(attachment: attachment))
+                    
+                    let spacingAttrs: [NSAttributedString.Key: Any] = [.kern: 4.0]
+                    attrStr.append(NSAttributedString(string: " ", attributes: spacingAttrs))
+                    attrStr.append(NSAttributedString(string: "PROXY", attributes: labelTextAttrs))
+                } else {
+                    attrStr.append(NSAttributedString(string: "PROXY", attributes: labelTextAttrs))
+                }
             } else {
-                attrStr.append(NSAttributedString(string: "PROXY", attributes: proxyTextAttrs))
+                // 显示 VPN 图标
+                if let vpnImage = NSImage(systemSymbolName: "network.badge.shield.half.filled", accessibilityDescription: nil) {
+                    let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
+                    let coloredImage = vpnImage.withSymbolConfiguration(config)
+                    let attachment = NSTextAttachment()
+                    attachment.image = coloredImage?.tinted(with: .systemGreen)
+                    attrStr.append(NSAttributedString(attachment: attachment))
+                    
+                    let spacingAttrs: [NSAttributedString.Key: Any] = [.kern: 4.0]
+                    attrStr.append(NSAttributedString(string: " ", attributes: spacingAttrs))
+                    attrStr.append(NSAttributedString(string: "VPN", attributes: labelTextAttrs))
+                } else {
+                    attrStr.append(NSAttributedString(string: "VPN", attributes: labelTextAttrs))
+                }
             }
             externalMenuItem.attributedTitle = attrStr
         } else {
@@ -382,15 +406,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, CLLocationManagerDelegate {
         externalIPMenuItem.attributedTitle = NSAttributedString(string: network.externalIP, attributes: myAttribute)
         menu.addItem(externalIPMenuItem)
         
-        // 只在直连 IP 与外部 IP 不同时才显示直连 IP（说明真正使用了代理）
-        if isUsingProxy {
+        // 当 Direct IP 与 External IP 不同时显示 Direct IP
+        if ipDifferent {
             let directLabel = NSMenuItem(title: "Direct", action: #selector(AppDelegate.doNothing(_:)), keyEquivalent: "")
             directLabel.isEnabled = false
             menu.addItem(directLabel)
             
             let directIPMenuItem = NSMenuItem(title: "", action: #selector(AppDelegate.copyTitle(_:)), keyEquivalent: "")
             directIPMenuItem.indentationLevel = 1
-            directIPMenuItem.attributedTitle = NSAttributedString(string: network.directIP, attributes: myAttribute)
+            var directIPText = network.directIP
+            if !network.directIPLocation.isEmpty {
+                directIPText += " \(network.directIPLocation)"
+            }
+            directIPMenuItem.attributedTitle = NSAttributedString(string: directIPText, attributes: myAttribute)
             menu.addItem(directIPMenuItem)
         }
         
@@ -428,10 +456,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, CLLocationManagerDelegate {
                 attributes: myAttribute
             )
             menu.addItem(internalIP)
-            internalIP = NSMenuItem(title: "", action: #selector(AppDelegate.copyTitle(_:)), keyEquivalent: "")
+            
+            // 显示 IP 和网关
+            internalIP = NSMenuItem(title: "", action: #selector(AppDelegate.copyIp(_:)), keyEquivalent: "")
             internalIP.indentationLevel = 3
+            internalIP.representedObject = interface["ip_address"]!  // 保存 IP 地址用于复制
+            var ipText = "\(interface["ip_address"]!)"
+            
+            // 调试信息
+            let ifName = interface["name"]!
+            print("Displaying interface: \(ifName)")
+            print("Gateway cache: \(gatewayCache)")
+            print("Gateway for \(ifName): \(gatewayCache[ifName] ?? "nil")")
+            
+            if let gateway = gatewayCache[ifName], !gateway.isEmpty {
+                ipText += " → \(gateway)"
+                print("Adding gateway to display: \(gateway)")
+            } else {
+                print("No gateway to display")
+            }
+            
             internalIP.attributedTitle = NSAttributedString(
-                string: "\(interface["ip_address"]!)",
+                string: ipText,
                 attributes: myAttribute
             )
             menu.addItem(internalIP)
@@ -610,6 +656,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, CLLocationManagerDelegate {
 
     @objc func copyIp(_ sender: Any?) {
         let mi = sender as! NSMenuItem
+        
+        // 优先使用 representedObject（内网 IP）
+        if let ip = mi.representedObject as? String {
+            let pasteboard = NSPasteboard.general
+            pasteboard.declareTypes([NSPasteboard.PasteboardType.string], owner: nil)
+            pasteboard.setString(ip, forType: NSPasteboard.PasteboardType.string)
+            print("Copying \(ip) to the clipboard...")
+            return
+        }
+        
+        // 回退到从 title 提取（外网 IP）
         let matched = matches(for: "\\b[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}", in: mi.title)
         let pasteboard = NSPasteboard.general
         pasteboard.declareTypes([NSPasteboard.PasteboardType.string], owner: nil)
@@ -679,9 +736,37 @@ class AppDelegate: NSObject, NSApplicationDelegate, CLLocationManagerDelegate {
         }
         constructMenu()
     }
-
+    
     @objc func quit(_ sender: Any?) {
         NSApplication.shared.terminate(nil)
+    }
+    
+    // MARK: - Gateway Info
+    
+    func fetchGatewayInfo() {
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let interfaces = Network().getIFAddresses(false)
+            var cache: [String: String] = [:]
+            
+            print("=== Fetching Gateway Info ===")
+            for interface in interfaces {
+                if let name = interface["name"] {
+                    // 跳过 utun 接口（VPN/隧道接口）
+                    if name.hasPrefix("utun") {
+                        print("Skipping utun interface: \(name)")
+                        continue
+                    }
+                    let gateway = self?.network.getGateway(name) ?? ""
+                    print("Interface: \(name), Gateway: \(gateway)")
+                    cache[name] = gateway
+                }
+            }
+            
+            DispatchQueue.main.async {
+                print("Gateway cache updated: \(cache)")
+                self?.gatewayCache = cache
+            }
+        }
     }
 
     @IBAction func openAbout(_ sender: Any?) {

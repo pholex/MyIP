@@ -30,6 +30,7 @@ public class IPService {
     private static let cityKey = "cachedCity"
     private static let lastUpdateKey = "lastIPUpdateTime"
     private static let isProxyKey = "isProxy"
+    private static let connectionTypeKey = "connectionType"
     
     private init() {}
     
@@ -95,6 +96,14 @@ public class IPService {
     
     public func saveProxyStatus(_ isProxy: Bool) {
         sharedDefaults?.set(isProxy, forKey: Self.isProxyKey)
+    }
+    
+    public func saveConnectionType(_ type: String) {
+        sharedDefaults?.set(type, forKey: Self.connectionTypeKey)
+    }
+    
+    public var connectionType: String {
+        return sharedDefaults?.string(forKey: Self.connectionTypeKey) ?? "direct"
     }
     
     public var isProxy: Bool {

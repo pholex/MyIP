@@ -26,6 +26,28 @@
 
 下载最新版本的 [MyIP.dmg](./build/release/MyIP.dmg) 文件，双击安装即可。
 
+## 开发配置
+
+### 配置高德 API Key（可选）
+
+Direct IP 地理位置查询功能需要高德地图 API Key：
+
+1. 复制配置文件模板：
+   ```bash
+   cp MyIP/Config.swift.example MyIP/Config.swift
+   ```
+
+2. 申请高德 API Key：
+   - 访问 [高德开放平台](https://console.amap.com/dev/key/app)
+   - 创建 Web 服务 API 类型的 Key
+
+3. 编辑 `MyIP/Config.swift`，填入你的 Key：
+   ```swift
+   static let amapKey = "YOUR_AMAP_KEY_HERE"
+   ```
+
+**注意：** `Config.swift` 已添加到 `.gitignore`，不会被提交到代码仓库。
+
 ## 使用说明
 
 ### 基本功能

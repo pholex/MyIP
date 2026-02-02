@@ -15,6 +15,7 @@ class Network {
 
     var externalIP: String = "N/A"
     var directIP: String = "N/A"
+    var directIPLocation: String = ""  // Direct IP 的地理位置
     var priorIP: String = "None"
 
     var hasIpChanged: Bool = true
@@ -121,6 +122,12 @@ class Network {
     func checkProxyStatus() {
         guard let proxies = SCDynamicStoreCopyProxies(nil) as? [String: Any] else {
             IPService.shared.saveProxyStatus(false)
+            getDirectIP { [weak self] in
+                guard let self = self else { return }
+                let ipDifferent = self.directIP != "N/A" && self.directIP != self.externalIP
+                IPService.shared.saveConnectionType(ipDifferent ? "vpn" : "direct")
+                self.onDirectIPUpdated?()
+            }
             return
         }
         let httpEnabled = proxies["HTTPEnable"] as? Int == 1
@@ -128,18 +135,22 @@ class Network {
         let socksEnabled = proxies["SOCKSEnable"] as? Int == 1
         let hasSystemProxy = httpEnabled || httpsEnabled || socksEnabled
         
-        // 如果系统设置了代理，获取直连 IP 进行比较
-        if hasSystemProxy {
-            getDirectIP { [weak self] in
-                guard let self = self else { return }
-                // 比较直连 IP 和外部 IP，如果不同才认为是真正的代理
-                let actuallyUsingProxy = self.directIP != "N/A" && self.directIP != self.externalIP
-                IPService.shared.saveProxyStatus(actuallyUsingProxy)
-                self.onDirectIPUpdated?()
+        // 获取直连 IP 进行比较
+        getDirectIP { [weak self] in
+            guard let self = self else { return }
+            // 比较直连 IP 和外部 IP，如果不同才认为是真正的代理
+            let ipDifferent = self.directIP != "N/A" && self.directIP != self.externalIP
+            let actuallyUsingProxy = ipDifferent && hasSystemProxy
+            IPService.shared.saveProxyStatus(actuallyUsingProxy)
+            
+            // 保存连接类型：proxy / vpn / direct
+            if ipDifferent {
+                IPService.shared.saveConnectionType(hasSystemProxy ? "proxy" : "vpn")
+            } else {
+                IPService.shared.saveConnectionType("direct")
             }
-        } else {
-            directIP = "N/A"
-            IPService.shared.saveProxyStatus(false)
+            
+            self.onDirectIPUpdated?()
         }
     }
     
@@ -147,7 +158,8 @@ class Network {
     func getDirectIP(completion: (() -> Void)? = nil) {
         let directIPServices = [
             "http://118.184.169.48/dyndns/getip",  // 首选：3322.org IP地址（纯IP，国内）
-            "http://cip.cc"                        // 备选：当前使用的服务（域名）
+            "http://myip.ipip.net",                // 备选1：ipip.net（国内）
+            "http://cip.cc"                        // 备选2：cip.cc（可能有限制）
         ]
         
         DispatchQueue.global().async { [weak self] in
@@ -182,8 +194,17 @@ class Network {
                 var ip: String?
                 
                 if service.contains("118.184.169.48") {
-                    // 3322.org 返回纯IP格式
-                    ip = output.trimmingCharacters(in: .whitespacesAndNewlines)
+                    // 3322.org 返回纯IP格式，需要验证是否为有效 IP
+                    let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+                    // 验证是否为有效的 IPv4 地址
+                    if trimmed.range(of: #"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"#, options: .regularExpression) != nil {
+                        ip = trimmed
+                    }
+                } else if service.contains("myip.ipip.net") {
+                    // ipip.net 返回格式：当前 IP：x.x.x.x 来自于：...
+                    if let match = output.range(of: #"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}"#, options: .regularExpression) {
+                        ip = String(output[match])
+                    }
                 } else {
                     // cip.cc 返回 "IP\t: x.x.x.x" 格式
                     let lines = output.components(separatedBy: "\n")
@@ -196,6 +217,8 @@ class Network {
                 if let validIP = ip, !validIP.isEmpty {
                     DispatchQueue.main.async {
                         self.directIP = validIP
+                        // 获取 Direct IP 的地理位置
+                        self.fetchDirectIPLocation(validIP)
                         completion?()
                     }
                     return
@@ -439,6 +462,7 @@ class Network {
                         interface["type"] = getInterfaceType(interface["name"]!)
                         interface["mac_address"] = getMacAddress(interface["name"]!)
                         interface["app"] = getInterfaceApp(interface["name"]!) ?? ""
+                        interface["gateway"] = ""  // 先设为空，异步获取
                         interfaces.append(interface)
                     }
                 }
@@ -447,6 +471,53 @@ class Network {
 
         freeifaddrs(ifaddr)
         return interfaces
+    }
+    
+    func getGateway(_ interfaceName: String) -> String {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/sbin/netstat")
+        task.arguments = ["-nr", "-f", "inet"]
+        
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = FileHandle.nullDevice
+        
+        do {
+            try task.run()
+            
+            // 设置 1 秒超时
+            let deadline = Date().addingTimeInterval(1.0)
+            while task.isRunning && Date() < deadline {
+                usleep(10000) // 10ms
+            }
+            
+            if task.isRunning {
+                task.terminate()
+                return ""
+            }
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8) {
+                let lines = output.components(separatedBy: "\n")
+                for line in lines {
+                    if line.hasPrefix("default") {
+                        let components = line.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+                        // 格式：default gateway flags interface
+                        if components.count >= 4 && components[3] == interfaceName {
+                            let gateway = components[1]
+                            // 只返回有效的 IP 地址格式，过滤掉 link# 等
+                            if gateway.range(of: #"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"#, options: .regularExpression) != nil {
+                                return gateway
+                            }
+                        }
+                    }
+                }
+            }
+        } catch {
+            print("Failed to get gateway: \(error)")
+        }
+        
+        return ""
     }
     
     // 检测是否为代理连接问题
@@ -490,5 +561,45 @@ class Network {
             print("OpenDNS query failed: \(error)")
             completion(nil)
         }
+    }
+    
+    // 使用高德 API 查询 IP 地理位置
+    func fetchDirectIPLocation(_ ip: String) {
+        // 从 Config 读取 API Key
+        guard !Config.amapKey.isEmpty && Config.amapKey != "YOUR_AMAP_KEY_HERE" else {
+            print("高德 API Key 未配置")
+            return
+        }
+        
+        let urlString = "https://restapi.amap.com/v3/ip?ip=\(ip)&key=\(Config.amapKey)"
+        guard let url = URL(string: urlString) else { return }
+        
+        URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
+            guard let data = data, error == nil else {
+                print("高德 IP 查询失败: \(error?.localizedDescription ?? "unknown")")
+                return
+            }
+            
+            do {
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let status = json["status"] as? String, status == "1",
+                   let province = json["province"] as? String,
+                   let city = json["city"] as? String {
+                    
+                    var location = ""
+                    if !province.isEmpty && province != city {
+                        location = "\(province)\(city)"
+                    } else if !city.isEmpty {
+                        location = city
+                    }
+                    
+                    DispatchQueue.main.async {
+                        self?.directIPLocation = location
+                    }
+                }
+            } catch {
+                print("解析高德 IP 响应失败: \(error)")
+            }
+        }.resume()
     }
 }

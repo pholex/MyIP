@@ -25,6 +25,7 @@
 		8B74887E2EECF61B00D2973E /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8B74887D2EECF61B00D2973E /* SwiftUI.framework */; };
 		8B74888B2EECF61C00D2973E /* MyIPWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 8B7488792EECF61A00D2973E /* MyIPWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		8B74889C2EECFEE800D2973E /* IPService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B74889B2EECFEE800D2973E /* IPService.swift */; };
+		8B96F9E42F3088D8005F9AEC /* Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B96F9E32F3088D8005F9AEC /* Config.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -74,6 +75,7 @@
 		8B74887D2EECF61B00D2973E /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		8B74889A2EECF77E00D2973E /* MyIPWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MyIPWidgetExtension.entitlements; sourceTree = "<group>"; };
 		8B74889B2EECFEE800D2973E /* IPService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = IPService.swift; path = Shared/IPService.swift; sourceTree = "<group>"; };
+		8B96F9E32F3088D8005F9AEC /* Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -133,6 +135,7 @@
 		138B3A7F2069F03A009CA103 /* MyIP */ = {
 			isa = PBXGroup;
 			children = (
+				8B96F9E32F3088D8005F9AEC /* Config.swift */,
 				8B11EC6D2EFCDA2400E1CC01 /* NetworkMonitor.swift */,
 				8B437B522EED42C000A10AA1 /* LaunchAtLogin.swift */,
 				8B74889B2EECFEE800D2973E /* IPService.swift */,
@@ -280,6 +283,7 @@
 				13B4C1EF2073369A00FD1D71 /* Reachability.swift in Sources */,
 				138B3A942069F126009CA103 /* AboutBoxViewController.swift in Sources */,
 				138B3A972069F140009CA103 /* Settings.swift in Sources */,
+				8B96F9E42F3088D8005F9AEC /* Config.swift in Sources */,
 				8B11EC6E2EFCDA2400E1CC01 /* NetworkMonitor.swift in Sources */,
 				8B437B532EED42C000A10AA1 /* LaunchAtLogin.swift in Sources */,
 			);
@@ -445,7 +449,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 4;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = D9HCZG34A8;
 				ENABLE_APP_SANDBOX = YES;
@@ -491,7 +495,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 4;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = D9HCZG34A8;
 				ENABLE_APP_SANDBOX = YES;
@@ -540,7 +544,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 4;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
@@ -585,7 +589,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 4;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;

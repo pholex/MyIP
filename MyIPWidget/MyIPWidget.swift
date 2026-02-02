@@ -18,6 +18,7 @@ struct IPEntry: TimelineEntry {
     let country: String
     let city: String
     let isProxy: Bool
+    let connectionType: String
 }
 
 // MARK: - Timeline Provider
@@ -25,7 +26,7 @@ struct IPEntry: TimelineEntry {
 struct IPProvider: TimelineProvider {
     
     func placeholder(in context: Context) -> IPEntry {
-        IPEntry(date: Date(), ip: "192.168.1.1", country: "Unknown", city: "Unknown", isProxy: false)
+        IPEntry(date: Date(), ip: "192.168.1.1", country: "Unknown", city: "Unknown", isProxy: false, connectionType: "direct")
     }
     
     func getSnapshot(in context: Context, completion: @escaping (IPEntry) -> Void) {
@@ -35,7 +36,8 @@ struct IPProvider: TimelineProvider {
             ip: info?.ip ?? "获取中...", 
             country: info?.country ?? "正在连接", 
             city: info?.city ?? "",
-            isProxy: IPService.shared.isProxy
+            isProxy: IPService.shared.isProxy,
+            connectionType: IPService.shared.connectionType
         )
         completion(entry)
     }
@@ -48,12 +50,12 @@ struct IPProvider: TimelineProvider {
             // 获取 IP，代理状态从 App Group 读取
             if let result = await fetchIPDirectly() {
                 IPService.shared.saveIPInfo(IPInfo(ip: result.ip, country: result.country, countryCode: "", city: result.city))
-                entry = IPEntry(date: Date(), ip: result.ip, country: result.country, city: result.city, isProxy: IPService.shared.isProxy)
+                entry = IPEntry(date: Date(), ip: result.ip, country: result.country, city: result.city, isProxy: IPService.shared.isProxy, connectionType: IPService.shared.connectionType)
             } else if let cached = IPService.shared.cachedIPInfo {
-                entry = IPEntry(date: Date(), ip: cached.ip, country: cached.country, city: cached.city, isProxy: IPService.shared.isProxy)
+                entry = IPEntry(date: Date(), ip: cached.ip, country: cached.country, city: cached.city, isProxy: IPService.shared.isProxy, connectionType: IPService.shared.connectionType)
                 nextUpdateMinutes = 3
             } else {
-                entry = IPEntry(date: Date(), ip: "连接中", country: "网络初始化", city: "", isProxy: false)
+                entry = IPEntry(date: Date(), ip: "连接中", country: "网络初始化", city: "", isProxy: false, connectionType: "direct")
                 nextUpdateMinutes = 1
             }
             
@@ -178,9 +180,12 @@ struct MyIPWidgetEntryView: View {
             } else {
                 HStack(spacing: 4) {
                     Text(entry.city == entry.country ? entry.city : "\(entry.country), \(entry.city)")
-                    if entry.isProxy {
+                    if entry.connectionType == "proxy" {
                         Image(systemName: "shield.fill")
                             .foregroundColor(.blue)
+                    } else if entry.connectionType == "vpn" {
+                        Image(systemName: "network.badge.shield.half.filled")
+                            .foregroundColor(.green)
                     }
                 }
                 .font(.subheadline)
@@ -218,11 +223,16 @@ struct MyIPWidgetEntryView: View {
                 } else {
                     HStack(spacing: 4) {
                         Text(entry.city == entry.country ? entry.city : "\(entry.country), \(entry.city)")
-                        if entry.isProxy {
+                        if entry.connectionType == "proxy" {
                             Image(systemName: "shield.fill")
                                 .foregroundColor(.blue)
                             Text("PROXY")
                                 .foregroundColor(.blue)
+                        } else if entry.connectionType == "vpn" {
+                            Image(systemName: "network.badge.shield.half.filled")
+                                .foregroundColor(.green)
+                            Text("VPN")
+                                .foregroundColor(.green)
                         }
                     }
                     .font(.subheadline)
@@ -289,13 +299,15 @@ struct MyIPWidget: Widget {
 #Preview(as: .systemSmall) {
     MyIPWidget()
 } timeline: {
-    IPEntry(date: Date(), ip: "54.199.86.109", country: "Japan", city: "Tokyo", isProxy: false)
-    IPEntry(date: Date(), ip: "54.199.86.109", country: "Japan", city: "Tokyo", isProxy: true)
+    IPEntry(date: Date(), ip: "54.199.86.109", country: "Japan", city: "Tokyo", isProxy: false, connectionType: "direct")
+    IPEntry(date: Date(), ip: "54.199.86.109", country: "Japan", city: "Tokyo", isProxy: true, connectionType: "proxy")
+    IPEntry(date: Date(), ip: "54.199.86.109", country: "Japan", city: "Tokyo", isProxy: false, connectionType: "vpn")
 }
 
 #Preview(as: .systemMedium) {
     MyIPWidget()
 } timeline: {
-    IPEntry(date: Date(), ip: "54.199.86.109", country: "Japan", city: "Tokyo", isProxy: false)
-    IPEntry(date: Date(), ip: "54.199.86.109", country: "Japan", city: "Tokyo", isProxy: true)
+    IPEntry(date: Date(), ip: "54.199.86.109", country: "Japan", city: "Tokyo", isProxy: false, connectionType: "direct")
+    IPEntry(date: Date(), ip: "54.199.86.109", country: "Japan", city: "Tokyo", isProxy: true, connectionType: "proxy")
+    IPEntry(date: Date(), ip: "54.199.86.109", country: "Japan", city: "Tokyo", isProxy: false, connectionType: "vpn")
 }

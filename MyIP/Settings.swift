@@ -48,9 +48,10 @@ class Settings: NSObject {
     }
 
     func archivePath() -> URL {
-        let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
-        let bundleName = Bundle.main.infoDictionary?["CFBundleName"] as? String ?? "MyIP"
-        return URL(fileURLWithPath: paths[0].path + "/" + bundleName + ".cfg")
+        let paths = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+        let appSupport = paths[0].appendingPathComponent("MyIP", isDirectory: true)
+        try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
+        return appSupport.appendingPathComponent("settings.json")
     }
 
     func reset() {

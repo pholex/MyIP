@@ -36,6 +36,9 @@ Carthage/Build/
 .LSOverride
 Icon
 
+# Config files with sensitive data
+MyIP/Config.swift
+
 # Thumbnails
 ._*
 
