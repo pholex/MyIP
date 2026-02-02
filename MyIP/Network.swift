@@ -475,40 +475,38 @@ class Network {
     
     func getGateway(_ interfaceName: String) -> String {
         let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/sbin/netstat")
-        task.arguments = ["-nr", "-f", "inet"]
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/grep")
+        task.arguments = ["^default"]
         
-        let pipe = Pipe()
-        task.standardOutput = pipe
+        let netstatTask = Process()
+        netstatTask.executableURL = URL(fileURLWithPath: "/usr/sbin/netstat")
+        netstatTask.arguments = ["-nr", "-f", "inet"]
+        
+        let pipe1 = Pipe()
+        let pipe2 = Pipe()
+        netstatTask.standardOutput = pipe1
+        netstatTask.standardError = FileHandle.nullDevice
+        task.standardInput = pipe1
+        task.standardOutput = pipe2
         task.standardError = FileHandle.nullDevice
         
         do {
+            try netstatTask.run()
             try task.run()
+            task.waitUntilExit()
+            netstatTask.waitUntilExit()
             
-            // 设置 1 秒超时
-            let deadline = Date().addingTimeInterval(1.0)
-            while task.isRunning && Date() < deadline {
-                usleep(10000) // 10ms
-            }
-            
-            if task.isRunning {
-                task.terminate()
-                return ""
-            }
-            
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let data = pipe2.fileHandleForReading.readDataToEndOfFile()
             if let output = String(data: data, encoding: .utf8) {
                 let lines = output.components(separatedBy: "\n")
                 for line in lines {
-                    if line.hasPrefix("default") {
-                        let components = line.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
-                        // 格式：default gateway flags interface
-                        if components.count >= 4 && components[3] == interfaceName {
-                            let gateway = components[1]
-                            // 只返回有效的 IP 地址格式，过滤掉 link# 等
-                            if gateway.range(of: #"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"#, options: .regularExpression) != nil {
-                                return gateway
-                            }
+                    let components = line.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+                    // 格式：default gateway flags interface
+                    if components.count >= 4 && components[3] == interfaceName {
+                        let gateway = components[1]
+                        // 只返回有效的 IP 地址格式，过滤掉 link# 等
+                        if gateway.range(of: #"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"#, options: .regularExpression) != nil {
+                            return gateway
                         }
                     }
                 }
@@ -595,6 +593,8 @@ class Network {
                     
                     DispatchQueue.main.async {
                         self?.directIPLocation = location
+                        // 触发菜单刷新
+                        self?.onDirectIPUpdated?()
                     }
                 }
             } catch {

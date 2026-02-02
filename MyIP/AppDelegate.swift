@@ -285,6 +285,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, CLLocationManagerDelegate {
         let connectionStatus = reachability?.connection.description ?? "Unknown"
         print("Updating (force == \(force)), \(connectionStatus)...")
         
+        // 刷新网关信息（网络状态变化时）
+        fetchGatewayInfo()
+        
         if force {
             if settings.settings.showLocation == true {
                 locationManager.startUpdatingLocation()
@@ -463,17 +466,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, CLLocationManagerDelegate {
             internalIP.representedObject = interface["ip_address"]!  // 保存 IP 地址用于复制
             var ipText = "\(interface["ip_address"]!)"
             
-            // 调试信息
+            // 从缓存读取网关（不实时获取，避免阻塞主线程）
             let ifName = interface["name"]!
-            print("Displaying interface: \(ifName)")
-            print("Gateway cache: \(gatewayCache)")
-            print("Gateway for \(ifName): \(gatewayCache[ifName] ?? "nil")")
-            
             if let gateway = gatewayCache[ifName], !gateway.isEmpty {
                 ipText += " → \(gateway)"
-                print("Adding gateway to display: \(gateway)")
-            } else {
-                print("No gateway to display")
             }
             
             internalIP.attributedTitle = NSAttributedString(
@@ -619,6 +615,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, CLLocationManagerDelegate {
         if settings.settings.showLocation == true {
             locationManager.startUpdatingLocation()
         }
+        // 刷新网关信息
+        fetchGatewayInfo()
         network.getPublicIPWait { [weak self] in
             self?.updateUI()
             // 手动刷新时也要触发 Widget 更新
@@ -748,22 +746,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, CLLocationManagerDelegate {
             let interfaces = Network().getIFAddresses(false)
             var cache: [String: String] = [:]
             
-            print("=== Fetching Gateway Info ===")
             for interface in interfaces {
                 if let name = interface["name"] {
                     // 跳过 utun 接口（VPN/隧道接口）
                     if name.hasPrefix("utun") {
-                        print("Skipping utun interface: \(name)")
                         continue
                     }
                     let gateway = self?.network.getGateway(name) ?? ""
-                    print("Interface: \(name), Gateway: \(gateway)")
                     cache[name] = gateway
                 }
             }
             
             DispatchQueue.main.async {
-                print("Gateway cache updated: \(cache)")
                 self?.gatewayCache = cache
             }
         }
