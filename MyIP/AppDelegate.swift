@@ -415,8 +415,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, CLLocationManagerDelegate {
             directLabel.isEnabled = false
             menu.addItem(directLabel)
             
-            let directIPMenuItem = NSMenuItem(title: "", action: #selector(AppDelegate.copyTitle(_:)), keyEquivalent: "")
+            let directIPMenuItem = NSMenuItem(title: "", action: #selector(AppDelegate.copyIp(_:)), keyEquivalent: "")
             directIPMenuItem.indentationLevel = 1
+            directIPMenuItem.representedObject = network.directIP
             var directIPText = network.directIP
             if !network.directIPLocation.isEmpty {
                 directIPText += " \(network.directIPLocation)"
