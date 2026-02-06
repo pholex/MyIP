@@ -91,4 +91,4 @@ MyIP/
 
 ## 致谢
 
-本项目基于 [IPConnect](https://github.com/pawong/IPConnect) 开源项目开发。进行了大幅重构和功能扩展，代码量增长 86.5%，新增 Widget 支持、网络监控增强、内存安全优化等现代化改进。
+本项目基于 [IPConnect](https://github.com/pawong/IPConnect) 开源项目开发。进行了大幅重构和功能扩展，代码量增长 117.2%，新增 Widget 支持、网络监控增强、内存安全优化等现代化改进。

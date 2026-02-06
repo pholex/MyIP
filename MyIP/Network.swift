@@ -532,6 +532,33 @@ class Network {
         return hasSystemProxy && directIP != "N/A"
     }
     
+    // 检查是否为保留 IP 地址
+    private func isReservedIP(_ ip: String) -> Bool {
+        let parts = ip.split(separator: ".").compactMap { Int($0) }
+        guard parts.count == 4 else { return true }
+        
+        let first = parts[0]
+        let second = parts[1]
+        
+        // RFC 2544 测试网段: 198.18.0.0/15
+        if first == 198 && (second == 18 || second == 19) {
+            return true
+        }
+        
+        // 其他保留地址
+        if first == 0 || first == 127 || first == 10 {
+            return true
+        }
+        if first == 172 && (16...31).contains(second) {
+            return true
+        }
+        if first == 192 && second == 168 {
+            return true
+        }
+        
+        return false
+    }
+    
     // 使用 OpenDNS 查询公网 IP（不依赖本机 DNS 解析）
     // 直接向 208.67.222.222 (resolver1.opendns.com) 发送 DNS 查询
     private func getIPViaOpenDNS(completion: @escaping (String?) -> Void) {
@@ -550,7 +577,8 @@ class Network {
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
                !output.isEmpty,
-               output.range(of: #"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"#, options: .regularExpression) != nil {
+               output.range(of: #"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"#, options: .regularExpression) != nil,
+               !isReservedIP(output) {
                 completion(output)
             } else {
                 completion(nil)
